@@ -92,6 +92,13 @@ class QueryInspectMiddleware(MiddlewareMixin):
 
     @classmethod
     def get_query_infos(cls, queries):
+        """
+
+        :param queries:
+        :type queries:
+        :return:
+        :rtype: list[QueryInfo]
+        """
         retval = []
         for q in queries:
             if q['sql'] is None:
@@ -119,6 +126,21 @@ class QueryInspectMiddleware(MiddlewareMixin):
         return buf
 
     @classmethod
+    def format_log(cls, sql, num, dup_groups):
+        log_dict = {'sql_rep': num,
+                    'sql': sql}
+        if cfg['log_tbs'] and dup_groups[sql]:
+            tracebacks = set()
+            for qi in dup_groups[sql]:
+                tracebacks.add(tuple(qi.tb))
+            log_dict['traceback'] = tracebacks
+            tb_formatted = ''
+            for tb in tracebacks:
+                tb_formatted = tb_formatted + 'Traceback:\n' + ''.join(traceback.format_list(tb))
+            log_dict['traceback_formatted'] = tb_formatted
+        return log_dict
+
+    @classmethod
     def check_duplicates(cls, infos):
         duplicates = [
             (qi, num) for qi, num in cls.count_duplicates(infos)
@@ -133,10 +155,7 @@ class QueryInspectMiddleware(MiddlewareMixin):
 
         if cfg['log_queries']:
             for sql, num in duplicates:
-                log.warning('[SQL] repeated query (%dx): %s' % (num, cls.truncate_sql(sql)))
-                if cfg['log_tbs'] and dup_groups[sql]:
-                    log.warning('Traceback:\n' +
-                        ''.join(traceback.format_list(dup_groups[sql][0].tb)))
+                log.warning(cls.format_log(sql, num, dup_groups))
 
         return n
 
@@ -190,7 +209,7 @@ class QueryInspectMiddleware(MiddlewareMixin):
         return sql
 
     @classmethod
-    def output_stats(self, infos, num_duplicates, request_time, response):
+    def output_stats(cls, infos, num_duplicates, request_time, response):
         sql_time = sum(qi.time for qi in infos)
         n = len(infos)
 
