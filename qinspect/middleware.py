@@ -1,3 +1,4 @@
+import json
 import logging
 import collections
 import re
@@ -127,17 +128,24 @@ class QueryInspectMiddleware(MiddlewareMixin):
 
     @classmethod
     def format_log(cls, sql, num, dup_groups):
-        log_dict = {'sql_rep': num,
-                    'sql': sql}
+        log_dict = {"sql_rep": num,
+                    "sql": sql}
         if cfg['log_tbs'] and dup_groups[sql]:
             tracebacks = set()
+            avg_time_cum = 0
+            max_time = 0
             for qi in dup_groups[sql]:
                 tracebacks.add(tuple(qi.tb))
-            log_dict['traceback'] = tracebacks
+                avg_time_cum += qi.time
+                if qi.time > max_time:
+                    max_time = qi.time
+            log_dict["traceback"] = list(tracebacks)
+            log_dict["query_avg"] = avg_time_cum / len(dup_groups[sql])
+            log_dict["query_max"] = max_time
             tb_formatted = ''
             for tb in tracebacks:
-                tb_formatted = tb_formatted + 'Traceback:\n' + ''.join(traceback.format_list(tb))
-            log_dict['traceback_formatted'] = tb_formatted
+                tb_formatted = tb_formatted + "Traceback:\n" + "".join(traceback.format_list(tb))
+            log_dict["traceback_formatted"] = tb_formatted
         return log_dict
 
     @classmethod
@@ -155,7 +163,9 @@ class QueryInspectMiddleware(MiddlewareMixin):
 
         if cfg['log_queries']:
             for sql, num in duplicates:
-                log.warning(cls.format_log(sql, num, dup_groups))
+                log_dict = cls.format_log(sql, num, dup_groups)
+                log_dump = json.dumps(log_dict)
+                log.warning(log_dump)
 
         return n
 
